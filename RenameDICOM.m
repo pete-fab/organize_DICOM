@@ -3,15 +3,18 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.0
-% date: 03/07/2015
+% version: 2.1
+% date: 10/09/2015
+%
+% Changes at version 2.1:
+% - fixed minor spelling issues regarding "ReferringPhysicianName"
 %
 % Changes at version 2.0:
 % - the script comletely rebuilt for full flexibility
 % - the number of subfolders is custom
 % - all the naming rules can be specified in the main function
 % - the mode system was abandoned as not useful
-%
+% 
 % Changes at version 1.2:
 % - added mode=3, for Ola
 % - mode=3 adds session folder to mode1 structure
@@ -31,7 +34,7 @@ function RenameDICOM()
     Dir = getScriptDir();
     
     flattenFolderHierarchy(Dir);
-    renameChildFolders(Dir,'PatientName',true); 
+    renameChildFolders(Dir,'PatientName;StudyDate',true); 
     % Domgalik template: 'RequestingPhysician'
     
     % enter the subdirectories
@@ -40,13 +43,13 @@ function RenameDICOM()
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
-        renameFiles(currentDir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the diresctory
+        renameFiles(currentDir,'SeriesDescription;PatientName;ReferringPhysicianName','IMA',true); %rename all the files in the diresctory
         % Below are listed file naming templates
         % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
         % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
         % Example Template: 'SeriesDescription;PatientName;PatientID;RequestedProcedureDescription','DCM'
         
-        counter = addSubFolder(currentDir,counter,'OperatorName','','',true);
+%         counter = addSubFolder(currentDir,counter,'OperatorName','','',true);
         % Domgalik template: Session - the Tag to be determined
         
         counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','fieldmap',true);
@@ -274,7 +277,7 @@ function dataString = ruleString2dataString(info,ruleString,isCaps)
         fieldVal = getfield( info,fields{k} );
         if strcmp(fields{k},'PatientName')
             fieldVal = strcat( fieldVal.FamilyName,'_',fieldVal.GivenName );
-        elseif( strcmp(fields{k},'RefferingPhysicianName') || strcmp(fields{k},'OperatorName')...
+        elseif( strcmp(fields{k},'ReferringPhysicianName') || strcmp(fields{k},'OperatorName')...
                 || strcmp(fields{k},'PerformingPhysicianName') || strcmp(fields{k},'RequestingPhysician') )
             fieldVal = fieldVal.FamilyName;
         end
