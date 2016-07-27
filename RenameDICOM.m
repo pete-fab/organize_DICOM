@@ -3,8 +3,13 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.3
-% date: 05/11/2015
+% version: 2.4
+% date: 09/11/2015
+%
+% Changes at version 2.4:
+% - a CoOccuranceMatrix was added to account for combination of
+% differenceRules and commonRules, it allows to distinguish situations in
+% which scans were restarted%
 %
 % Changes at version 2.3:
 % - changed the way script works. It operates by the script given as
@@ -47,17 +52,23 @@
 function RenameDICOM(Dir)
 
     if ~exist(Dir,'dir')
-        error( strcat('Given directory does not exist: ',Dir) );
+        error( strcat('Given directory does not exist: ',Dir,' . Give me something real to work on.') );
     end
     
     flattenFolderHierarchy(Dir);
+    
+    % Commonly used rules:
+    % RequestingPhysician - sbXX
+    % StudyComments - sX
+    % ReferringPhysicianName - Project Name
+   
+    % Rule strings can be ; seperated e.g.:
     %renameChildFolders(Dir,'PatientName;StudyDate',true); 
-    renameChildFolders(Dir,'RequestingPhysician',true); 
-    % Domgalik template: 'RequestingPhysician'
+    renameChildFolders(Dir,'ReferringPhysicianName',true);
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    parfor i = 1 : listSize(1) %parfor
+    for i = 1 : listSize(1) %parfor
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
@@ -67,16 +78,11 @@ function RenameDICOM(Dir)
         % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
         % Example Template: 'SeriesDescription;PatientName;PatientID;RequestedProcedureDescription','DCM'
         
-%         counter = addSubFolder(currentDir,counter,'OperatorName','','',true);
-        % Domgalik template: Session - the Tag to be determined
-        
+        % Each subfolder function call creates another subfolder level.
+        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','PatientName',true);
+        counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',true);
         counter = addSubFolder(currentDir,counter,'StudyComments','','',true);
-        % Domagalik template: 'SeriesDescription','SeriesNumber','fieldmap',true
-        
         % There can be more subfolders added
-        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','fieldmap',true);
-%         counter = addSubFolder(currentDir,counter,'RequestingPhysician','',false);
-%         counter = addSubFolder(currentDir,counter,'OperatorName','',false);
     end
     
 end
@@ -90,16 +96,19 @@ end
 % differenceRuleString - contains rule constructed as above and containing
 %   dicomInfoTags that should be differentiated in folders that would
 %   otherwise have the same name
-% restrictDiffRuleString - is a variable used when differenceRuleString is
-%   not null. It restricts its application to a specified value.
+% commonRuleString - is a variable used when differenceRuleString is
+%   not null. It specifies which images should be put together despite the
+%   differenceRuleString (they will be distinguished by this rule late on)
 % isCaps - indicates wether to capitalise the names or not (true or false)
-function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, restrictDiffRuleString, isCaps)
+function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps)
     [dirList,dirListSize] = getCurrentDirList(dir,depth);
 
     if( dirListSize == 0 )
         dirList(end+1).path = dir;
         dirListSize = [0 1];
     end
+    
+    CM = []; % create Co Occurance Matrix for difference rules
     
     for d = 1 : dirListSize(2)
         currentDir = dirList(d).path;
@@ -110,7 +119,7 @@ function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, rest
             %get subfolder folder Name
             currentFilePath = fullfile(currentDir,fileList(f).name);
             info = dicominfo(currentFilePath);
-            newDir = createSubFolder(currentDir,info,ruleString,differenceRuleString, restrictDiffRuleString, isCaps);
+            [CM, newDir] = createSubFolder(currentDir,info,ruleString,differenceRuleString, commonRuleString, isCaps, CM);
 
             %move file to folder
             newFilePath = strcat(newDir,fileList(f).name);
@@ -189,41 +198,38 @@ end
 % - info - DICOM info of the file to be moved to subdirectory
 % - ruleString - rule for creating subfolder
 % - differenceString - rule for distinguishing similarity between DICOM
-% files
-function newDir = createSubFolder(dir,info,ruleString,differenceRuleString, restrictDiffRuleString, isCaps)
+% - commonRuleString - rule for preventing the differenceString being
+% applied
+% - isCaps - are the resulting strings to be in capital or small letters 
+% - coOccuranceMatrix - matrix holding the data for applying difference and
+% common rules
+function [coOccuranceMatrix, newDir] = createSubFolder(dir,info,ruleString,differenceRuleString,commonRuleString, isCaps, coOccuranceMatrix)
     isNewDirFound = false;
     k = 0;
     folderName = ruleString2dataString(info, ruleString, isCaps);
+    diffStr = ruleString2dataString(info,differenceRuleString, isCaps);
+    commonStr = ruleString2dataString(info,commonRuleString, isCaps);
     
     %if differenceRuleString is set then the folders will need to change.
-    if( ~isempty( differenceRuleString )  && strcmpi(folderName, restrictDiffRuleString) )
-        folderName = strcat( folderName, '_0' );
-    end
-    
+%     if( ~isempty( differenceRuleString ) )% && strcmpi(folderName, restrictDiffRuleString) )
+%         folderName = strcat( folderName, '_0' );
+%     end
+        
     while( ~isNewDirFound )
         
         if( k ~= 0 )
             folderName = adjustFolderName(folderName);
         end
-        newDir = strcat(dir,'\',folderName,'\');
         
+        newDir = strcat(dir,'\',folderName,'\');
+        coOccuranceMatrix = addToCoOccuranceMatrix(coOccuranceMatrix,diffStr,commonStr,newDir);
         if( exist(newDir,'dir') )
             if( isempty(differenceRuleString) )
                 return; % if differenceRuleString is empty add to specified directory
                 % the differences/similarities between files are ignored
             end
             
-            [fileList, fileListSize] = getFileList(newDir);
-            if fileListSize(1) == 0
-                return; % if empty directory return its name
-            end
-            % if not empty retrieve information about the first file
-            secondFilePath = fullfile(newDir,fileList(1).name);
-            info2 = dicominfo(secondFilePath);
-
-            datStr1 = ruleString2dataString(info,differenceRuleString, isCaps);
-            datStr2 = ruleString2dataString(info2,differenceRuleString, isCaps);
-            if strcmp(datStr1,datStr2) && ~strcmpi(folderName, restrictDiffRuleString)
+            if isImageAllowedIn(coOccuranceMatrix,diffStr,commonStr,newDir)
                 return; % if the files inside have the same characteristic return
             end
             
@@ -232,6 +238,53 @@ function newDir = createSubFolder(dir,info,ruleString,differenceRuleString, rest
         else
             isNewDirFound = true;
             mkdir( newDir );
+        end
+    end
+end
+
+% Adds the data to Co-Occurance Matrix if it is not already there
+% @variables:
+% CM - the matrix,
+% differenceRuleValue - data value
+% commonRuleValue - data value
+% pathName - data value
+function CM = addToCoOccuranceMatrix(CM,differenceRuleValue,commonRuleValue,pathName)
+    if ~isExistInCoOccuranceMatrix(CM,commonRuleValue,pathName)
+        CM(end+1).differenceRuleValue = differenceRuleValue;
+        CM(end).commonRuleValue = commonRuleValue;
+        CM(end).folderName = pathName;
+    end
+end
+
+% Verifies whether the data exists in Co-Occurance Matrix
+% @variables:
+% CM - the matrix,
+% commonRuleValue - data value
+% pathName - data value
+function TF = isExistInCoOccuranceMatrix(CM,commonRuleValue, pathName)
+    TF = false;
+    for i = 1 : size(CM,2)
+        if strcmp(CM(i).folderName,pathName) && strcmp(CM(i).commonRuleValue,commonRuleValue)
+            TF = true;
+            break;
+        end
+    end
+end
+
+% Verifies by using Co-Occurance Matrix whether the image can be inserted
+% into the given pathName considering the rules
+% @variables:
+% @variables:
+% CM - the matrix,
+% differenceRuleValue - data value
+% commonRuleValue - data value
+% pathName - data value
+function TF = isImageAllowedIn(CM,differenceRuleValue,commonRuleValue,pathName)
+    TF = false;
+    for i = 1 : size(CM,2)
+        if strcmp(CM(i).differenceRuleValue,differenceRuleValue) && strcmp(CM(i).folderName,pathName) && strcmp(CM(i).commonRuleValue,commonRuleValue)
+            TF = true;
+            break;
         end
     end
 end
@@ -284,9 +337,13 @@ end
 % to be used
 function dataString = ruleString2dataString(info,ruleString,isCaps)
     fields = strsplit(ruleString,';');
+    dataString = '';
+    
+    if strcmp(fields{1},'')
+        return;
+    end
     fieldsSize = size(fields);
     
-    dataString = '';
     for k = 1 : fieldsSize(2)
         if( k > 1)
             dataString = strcat(dataString,'_');
@@ -311,6 +368,10 @@ function dataString = ruleString2dataString(info,ruleString,isCaps)
         dataString = strcat( dataString, fieldValString);
     end
     
+    dataString = applyCaps(dataString, isCaps);
+end
+
+function dataString = applyCaps(dataString, isCaps)
     if( isCaps )
         dataString = upper( dataString );
     else
