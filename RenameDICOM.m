@@ -3,8 +3,12 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.4
+% version: 2.5
 % date: 09/11/2015
+%
+% Changes at version 2.5:
+% - fixed major error that script was overwriting DICOM files in
+% flattenFolderHierarchy()
 %
 % Changes at version 2.4:
 % - a CoOccuranceMatrix was added to account for combination of
@@ -48,7 +52,6 @@
 % mode = 2 - scanner like)
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 function RenameDICOM(Dir)
 
     if ~exist(Dir,'dir')
@@ -68,7 +71,7 @@ function RenameDICOM(Dir)
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    for i = 1 : listSize(1) %parfor
+    parfor i = 1 : listSize(1) %parfor
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
@@ -101,6 +104,7 @@ end
 %   differenceRuleString (they will be distinguished by this rule late on)
 % isCaps - indicates wether to capitalise the names or not (true or false)
 function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps)
+    disp(strcat(counter+4,'. Adding subfolders according to the rule: ',ruleString));
     [dirList,dirListSize] = getCurrentDirList(dir,depth);
 
     if( dirListSize == 0 )
@@ -123,7 +127,7 @@ function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, comm
 
             %move file to folder
             newFilePath = strcat(newDir,fileList(f).name);
-            renameThisFile(currentFilePath,newFilePath);
+            renameThisFile(currentFilePath,newDir,fileList(f).name);
             
         end
     end
@@ -161,6 +165,7 @@ end
 % fileType - string with file type: 'IMA', 'DCM', 'DICOM'
 % isCaps - true/false, should the names be capitalised or small letters
 function renameFiles(currentDir,namingRule,fileType,isCaps)
+    disp('3. Renaming files');
     [currentFileList,currentListSize] = getFileList(currentDir);
     % calculate number of digits in number
     numSize = numel(num2str(currentListSize(1))); 
@@ -168,7 +173,7 @@ function renameFiles(currentDir,namingRule,fileType,isCaps)
     %format number string
     formatString = strcat('%0',num2str(numSize),'d');
     
-    for k = 1 : currentListSize(1)
+    parfor k = 1 : currentListSize(1)
         
         %read DICOM info
         currentFilePath = fullfile(currentDir,currentFileList(k).name);
@@ -177,7 +182,7 @@ function renameFiles(currentDir,namingRule,fileType,isCaps)
         newFileName = getNewDicomName(info, namingRule, fileType, isCaps, formatString, k-1);
         newFilePath = strcat(currentDir,newFileName);
         
-        renameThisFile(currentFilePath,newFilePath);
+        renameThisFile(currentFilePath,currentDir,newFileName);
     end
 end
 
@@ -420,6 +425,7 @@ end
 % renames the folders based on the properties of the first DICOM file
 % inside that folder
 function renameChildFolders(dirName,ruleString,isCaps)
+    disp('Renaming child folders');
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
@@ -458,6 +464,8 @@ end
 %  - subfolder2
 %  - subfolder3
 function flattenFolderHierarchy(dirName)
+    disp('1. Flattening the original directory');
+
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
@@ -502,7 +510,7 @@ function recursiveMoveFilesToParent(dirName,parentDir)
         oldFilePath = fullfile(dirName,thisFile.name);
         if isDICOM(oldFilePath) && ~strcmp(thisFile.name,'DICOMDIR')
             newFilePath = strcat(parentDir,'\',thisFile.name);
-            renameThisFile(oldFilePath,newFilePath);
+            renameThisFile(oldFilePath,parentDir,thisFile.name);
         else
             delete(oldFilePath);
         end
@@ -524,13 +532,21 @@ function recursiveMoveFilesToParent(dirName,parentDir)
 end
 
 % Before renaming checks whether the old and the new path are not the same.
-function renameThisFile(oldFilePath, newFilePath)
+% Also verifies that existing file with newFilePath will not be overwritten
+function renameThisFile(oldFilePath, newFileDir, newFileName)
+    newFilePath = strcat(newFileDir,'\',newFileName);
     if( ~strcmp(oldFilePath,newFilePath) )
+        if exist(newFilePath,'file')
+            info = dicominfo(oldFilePath);
+            newFilePath = strcat(newFileDir,'\',info.SOPInstanceUID);
+        end
         movefile(oldFilePath,newFilePath);
     end
 end
 
 % Before renaming checks whether the old and the new path are not the same.
+% Also verifies that new file will not overwrite another if one of the same
+% newFolderPath exists.
 function renameThisFolder(oldFolderPath, newFolderPath)
     if( ~strcmp(oldFolderPath,newFolderPath) )
         if ( ~exist(newFolderPath,'dir') )
