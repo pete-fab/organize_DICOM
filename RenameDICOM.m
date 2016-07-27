@@ -3,8 +3,12 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.1
+% version: 2.2
 % date: 10/09/2015
+%
+% Changes at version 2.2:
+% - fixed error of removing visible directory when directory was missing 
+% '..' or '.' hidden directory
 %
 % Changes at version 2.1:
 % - fixed minor spelling issues regarding "ReferringPhysicianName"
@@ -34,12 +38,13 @@ function RenameDICOM()
     Dir = getScriptDir();
     
     flattenFolderHierarchy(Dir);
-    renameChildFolders(Dir,'PatientName;StudyDate',true); 
+    %renameChildFolders(Dir,'PatientName;StudyDate',true); 
+    renameChildFolders(Dir,'RequestingPhysician',true); 
     % Domgalik template: 'RequestingPhysician'
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    for i = 1 : listSize(1) %parfor
+    parfor i = 1 : listSize(1) %parfor
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
@@ -122,8 +127,7 @@ end
 function [list,listSize] = getFolderList(Dir)
     DirResult = dir( Dir );
     list = DirResult([DirResult.isdir]); % select folders
-    list(2,:)=[];
-    list(1,:)=[];
+    list = selectVisibleDirectories(list);
     listSize = size(list);
 end
 
@@ -319,7 +323,7 @@ function renameChildFolders(dirName,ruleString,isCaps)
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
-    allSubDirs = allDirs(3:end);
+    allSubDirs = selectVisibleDirectories( allDirs );
     
     %rename them based on their contents
     for i = 1:length(allSubDirs)
@@ -351,7 +355,7 @@ function flattenFolderHierarchy(dirName)
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
-    allSubDirs = allDirs(3:end);
+    allSubDirs = selectVisibleDirectories( allDirs );
     
     %rename them based on their contents
     for i = 1:length(allSubDirs)
@@ -361,7 +365,18 @@ function flattenFolderHierarchy(dirName)
     end
 end
 
-%recusrive function to verify the session folder
+% Remove dot subdirectories '.' and '..'
+function dirResultStruct = selectVisibleDirectories(dirResultStruct)
+    for i = length(dirResultStruct):-1:1
+        if( strcmp(dirResultStruct(i).name,'..') || strcmp(dirResultStruct(i).name,'.') )
+            dirResultStruct(i) = [];
+        end
+    end
+    
+    if( size(dirResultStruct,2) == 0 )
+        dirResultStruct = struct([]);
+    end
+end
 
 
 % recursive function to change move files to parent
@@ -386,7 +401,7 @@ function recursiveMoveFilesToParent(dirName,parentDir)
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
-    allSubDirs = allDirs(3:end);
+    allSubDirs = selectVisibleDirectories( allDirs );
 
     %remove extra folders
     for i = 1:length(allSubDirs)
