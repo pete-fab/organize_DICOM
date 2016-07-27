@@ -3,8 +3,14 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.7
-% date: 11/07/2016
+% version: 2.8
+% date: 16/07/2016
+%
+% Changes at version 2.8
+% - fixed issue of files over writing when processing multiple subjects;
+% files are being renamed to unique SOPInstanceUID and renamed to requested
+% name after creating subfolders
+% - ordering of files is fixed according to instance numbering in DICOM
 %
 % Changes at version 2.7
 % - added function sanitizeString(); it is used on strings used for file
@@ -80,11 +86,9 @@ function RenameDICOM(Dir)
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    parfor i = 1 : listSize(1) %parfor
+    for i = 1 : listSize(1)
         counter = 0;
-        currentDir = strcat(Dir,'\',folderList(i).name,'\');    
-        
-        renameFiles(currentDir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL setting
+        currentDir = strcat(Dir,filesep,folderList(i).name,filesep);        
         % Below are listed file naming templates
         % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
         % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
@@ -99,6 +103,8 @@ function RenameDICOM(Dir)
         
         % There can be more subfolders added
     end
+    disp(strcat(num2str(i+4),'. Renaming files'));
+    renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL setting
     
 end
 
@@ -116,7 +122,7 @@ end
 %   differenceRuleString (they will be distinguished by this rule late on)
 % isCaps - indicates wether to capitalise the names or not (true or false)
 function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps)
-    disp(strcat(depth+4,'. Adding subfolders according to the rule: ',ruleString));
+    disp(strcat( num2str(depth+3) ,'. Adding subfolders according to the rule: ',ruleString));
     [dirList,dirListSize] = getCurrentDirList(dir,depth);
 
     if( dirListSize == 0 )
@@ -144,8 +150,8 @@ function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, comm
         end
     end
     
-    dirSplit = strsplit(dir,'\');
-    newDirSplit = strsplit(newDir,'\');
+    dirSplit = strsplit(dir,filesep);
+    newDirSplit = strsplit(newDir,filesep);
     depth = numel(newDirSplit) - numel(dirSplit);
 end
 
@@ -177,7 +183,6 @@ end
 % fileType - string with file type: 'IMA', 'DCM', 'DICOM'
 % isCaps - true/false, should the names be capitalised or small letters
 function renameFiles(currentDir,namingRule,fileType,isCaps)
-    disp('3. Renaming files');
     [currentFileList,currentListSize] = getFileList(currentDir);
     % calculate number of digits in number
     numSize = numel(num2str(currentListSize(1))); 
@@ -191,10 +196,16 @@ function renameFiles(currentDir,namingRule,fileType,isCaps)
         currentFilePath = fullfile(currentDir,currentFileList(k).name);
         info = dicominfo(currentFilePath);
                 
-        newFileName = getNewDicomName(info, namingRule, fileType, isCaps, formatString, k-1);
+        newFileName = getNewDicomName(info, namingRule, fileType, isCaps, formatString, info.InstanceNumber);
         newFilePath = strcat(currentDir,newFileName);
         
         renameThisFile(currentFilePath,currentDir,newFileName);
+    end
+    
+    [dirList,dirListSize] = getFolderList(currentDir);
+    for k = 1 : dirListSize
+        childDir = strcat(currentDir,filesep,dirList(k).name,filesep);
+        renameFiles(childDir,namingRule,fileType,isCaps)
     end
 end
 
@@ -238,7 +249,7 @@ function [coOccuranceMatrix, newDir] = createSubFolder(dir,info,ruleString,diffe
             folderName = adjustFolderName(folderName);
         end
         
-        newDir = strcat(dir,'\',folderName,'\');
+        newDir = strcat(dir,filesep,folderName,filesep);
         coOccuranceMatrix = addToCoOccuranceMatrix(coOccuranceMatrix,diffStr,commonStr,newDir);
         if( exist(newDir,'dir') )
             if( isempty(differenceRuleString) )
@@ -334,7 +345,7 @@ function [list,listSize] = getCurrentDirList(dir,depth)
     list = [];
     [folderList, listSize] = getFolderList(dir);
     for i = 1 : listSize(1) %parfor
-        currentDir = strcat(dir,'\',folderList(i).name);
+        currentDir = strcat(dir,filesep,folderList(i).name);
         
         if( strcmp(depth,'a') || depth == 0 )
             list(end+1).path = currentDir;
@@ -464,7 +475,7 @@ function renameChildFolders(dirName,ruleString,isCaps)
 
             newFolderName = ruleString2dataString(info,ruleString,isCaps);
             if(~isempty( newFolderName ))
-                newFolderPath = strcat(dirName,'\',newFolderName);
+                newFolderPath = strcat(dirName,filesep,newFolderName);
                 renameThisFolder(oldFolderPath,newFolderPath);    
             end
         else
@@ -524,8 +535,8 @@ function recursiveMoveFilesToParent(dirName,parentDir)
         thisFile = allFiles(i);
         oldFilePath = fullfile(dirName,thisFile.name);
         if isDICOM(oldFilePath) && ~strcmp(thisFile.name,'DICOMDIR')
-            newFilePath = strcat(parentDir,'\',thisFile.name);
-            renameThisFile(oldFilePath,parentDir,thisFile.name);
+            info = dicominfo(oldFilePath);
+            renameThisFile(oldFilePath,parentDir,strcat(info.SeriesInstanceUID,'_',num2str(info.InstanceNumber)));
         else
             delete(oldFilePath);
         end
@@ -550,12 +561,15 @@ end
 % Also verifies that existing file with newFilePath will not be overwritten
 function renameThisFile(oldFilePath, newFileDir, newFileName)
     newFileName = sanitizeString(newFileName);
-    newFilePath = strcat(newFileDir,'\',newFileName);
+    newFilePath = strcat(newFileDir,filesep,newFileName);
+    newFilePath = sanitizePath(newFilePath);
+    if exist(newFilePath,'file')
+        info = dicominfo(oldFilePath);
+        [~,~,ext] = fileparts(newFilePath); 
+        newFilePath = strcat(newFileDir,filesep,info.SOPInstanceUID,ext);
+        newFilePath = sanitizePath(newFilePath);
+    end
     if( ~strcmp(oldFilePath,newFilePath) )
-        if exist(newFilePath,'file')
-            info = dicominfo(oldFilePath);
-            newFilePath = strcat(newFileDir,'\',info.SOPInstanceUID);
-        end
         movefile(oldFilePath,newFilePath);
     end
 end
@@ -567,6 +581,13 @@ function string = sanitizeString(string)
     for i = 1 : length(bannedList)
         string = strrep(string, bannedList(i),''); 
     end
+end
+
+function path = sanitizePath(path)
+    path = strsplit(path,'/');
+    path = cell2mat(path);
+    path = strsplit(path,'\');
+    path = strjoin(path,filesep);
 end
 
 % Before renaming checks whether the old and the new path are not the same.
@@ -588,11 +609,11 @@ end
 
 % Prevents overwrite when moving the file
 function moveFile(oldDir,newDir,oldFileName,newFileName)
-     if( exist(strcat(newDir,'\',newFileName),'file') )
+     if( exist(strcat(newDir,filesep,newFileName),'file') )
         newFileName = generateRandomString(20);
         moveFile(oldDir,newDir,oldFileName,newFileName);
      else
-        movefile( strcat(oldDir,'\',oldFileName),strcat(newDir,'\',newFileName) );
+        movefile( strcat(oldDir,filesep,oldFileName),strcat(newDir,filesep,newFileName) );
      end
 end
 
