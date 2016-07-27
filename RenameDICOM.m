@@ -3,9 +3,20 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.2
-% date: 10/09/2015
+% version: 2.3
+% date: 05/11/2015
 %
+% Changes at version 2.3:
+% - changed the way script works. It operates by the script given as
+% argument
+% - it allows to import full PACS folders with all the mess that they come
+% with (the script recognises DICOM files) and deletes all the others!
+% - the script deals with missing DICOM tags, by substituting them with
+% cumpolsory information (PatientName). The script notifies of this event
+% by writing message to the console.
+% - multiple studies can be converted with this script fairly safely (no
+% data should be overwritten or missing), though no guarantees
+% 
 % Changes at version 2.2:
 % - fixed error of removing visible directory when directory was missing 
 % '..' or '.' hidden directory
@@ -33,9 +44,11 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function RenameDICOM()
-    
-    Dir = getScriptDir();
+function RenameDICOM(Dir)
+
+    if ~exist(Dir,'dir')
+        error( strcat('Given directory does not exist: ',Dir) );
+    end
     
     flattenFolderHierarchy(Dir);
     %renameChildFolders(Dir,'PatientName;StudyDate',true); 
@@ -48,7 +61,7 @@ function RenameDICOM()
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
-        renameFiles(currentDir,'SeriesDescription;PatientName;ReferringPhysicianName','IMA',true); %rename all the files in the diresctory
+        renameFiles(currentDir,'SeriesDescription;PatientName;ReferringPhysicianName','IMA',true); %rename all the files in the directory
         % Below are listed file naming templates
         % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
         % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
@@ -57,10 +70,11 @@ function RenameDICOM()
 %         counter = addSubFolder(currentDir,counter,'OperatorName','','',true);
         % Domgalik template: Session - the Tag to be determined
         
-        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','fieldmap',true);
+        counter = addSubFolder(currentDir,counter,'StudyComments','','',true);
         % Domagalik template: 'SeriesDescription','SeriesNumber','fieldmap',true
         
         % There can be more subfolders added
+        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','fieldmap',true);
 %         counter = addSubFolder(currentDir,counter,'RequestingPhysician','',false);
 %         counter = addSubFolder(currentDir,counter,'OperatorName','',false);
     end
@@ -278,12 +292,20 @@ function dataString = ruleString2dataString(info,ruleString,isCaps)
             dataString = strcat(dataString,'_');
         end
         
-        fieldVal = getfield( info,fields{k} );
-        if strcmp(fields{k},'PatientName')
-            fieldVal = strcat( fieldVal.FamilyName,'_',fieldVal.GivenName );
-        elseif( strcmp(fields{k},'ReferringPhysicianName') || strcmp(fields{k},'OperatorName')...
-                || strcmp(fields{k},'PerformingPhysicianName') || strcmp(fields{k},'RequestingPhysician') )
-            fieldVal = fieldVal.FamilyName;
+        if isfield( info,fields{k} ) % Check if ths field exists. If it is empty, it may not exist
+            fieldVal = getField( info,fields{k} );
+        elseif( strcmp(fields{k},'ImageComments') || strcmp(fields{k},'StudyComments') )
+            nameString = getField( info, 'PatientName' );
+            fieldVal = getField( info, 'StudyDate' );
+            disp(strcat('The StudyComment is missing for image taken on ', fieldVal,' for ',nameString));
+        elseif( strcmp(fields{k},'RequestingPhysician') )
+            dateString = getField( info, 'StudyDate' );
+            fieldVal = getField( info, 'PatientName' );
+            disp(strcat('The RequestingPhysician is missing for image taken on ', dateString,' for ',fieldVal));
+        else
+            dateString = getField( info, 'StudyDate' );
+            fieldVal = getField( info, 'PatientName' );
+            disp(strcat('The',fields{k},' is missing for image taken on ', dateString,' for ',fieldVal));
         end
         fieldValString = parseFieldValue( fieldVal );
         dataString = strcat( dataString, fieldValString);
@@ -293,6 +315,23 @@ function dataString = ruleString2dataString(info,ruleString,isCaps)
         dataString = upper( dataString );
     else
         dataString = lower( dataString );
+    end
+end
+
+% Overrides Matlab getfield() function. It adds verification whether the
+% field exists to it.
+function result = getField(structure, fieldName)
+    if isfield( structure,fieldName )
+        fieldVal = getfield( structure,fieldName );
+        if strcmp( fieldName,'PatientName' )
+            fieldVal = strcat( getField(fieldVal,'FamilyName') ,'_', getField(fieldVal,'GivenName') );
+        elseif( strcmp(fieldName,'ReferringPhysicianName') || strcmp(fieldName,'OperatorName')...
+                || strcmp(fieldName,'PerformingPhysicianName') || strcmp(fieldName,'RequestingPhysician') )
+            fieldVal = getField(fieldVal,'FamilyName');
+        end
+        result = fieldVal;
+    else
+        result = '';
     end
 end
 
@@ -337,12 +376,18 @@ function renameChildFolders(dirName,ruleString,isCaps)
             continue;
         end
         
-        filePath = fullfile(oldFolderPath,allFiles(1).name);
-        info = dicominfo(filePath);
-        
-        newFolderName = ruleString2dataString(info,ruleString,isCaps);
-        newFolderPath = strcat(dirName,'\',newFolderName);
-        renameThisFile(oldFolderPath,newFolderPath);    
+        % the folder could happen to be empty if contained only non-DICOM
+        % files or was originally empty. In such case skip moving it.
+        if ~isempty(allFiles)
+            filePath = fullfile(oldFolderPath,allFiles(1).name);
+            info = dicominfo(filePath);
+
+            newFolderName = ruleString2dataString(info,ruleString,isCaps);
+            newFolderPath = strcat(dirName,'\',newFolderName);
+            renameThisFolder(oldFolderPath,newFolderPath);    
+        else
+            rmdir(oldFolderPath);
+        end
     end
 end
 
@@ -394,9 +439,14 @@ function recursiveMoveFilesToParent(dirName,parentDir)
     for i = 1 : fileListLength
         thisFile = allFiles(i);
         oldFilePath = fullfile(dirName,thisFile.name);
-        newFilePath = strcat(parentDir,'\',thisFile.name);
-        renameThisFile(oldFilePath,newFilePath);
+        if isDICOM(oldFilePath) && ~strcmp(thisFile.name,'DICOMDIR')
+            newFilePath = strcat(parentDir,'\',thisFile.name);
+            renameThisFile(oldFilePath,newFilePath);
+        else
+            delete(oldFilePath);
+        end
     end
+    fileListLength = size(allFiles);
     
     %get the directories
     dirResult = dir(dirName);
@@ -417,4 +467,75 @@ function renameThisFile(oldFilePath, newFilePath)
     if( ~strcmp(oldFilePath,newFilePath) )
         movefile(oldFilePath,newFilePath);
     end
+end
+
+% Before renaming checks whether the old and the new path are not the same.
+function renameThisFolder(oldFolderPath, newFolderPath)
+    if( ~strcmp(oldFolderPath,newFolderPath) )
+        if ( ~exist(newFolderPath,'dir') )
+            movefile(oldFolderPath,newFolderPath);
+        else
+            [list, listSize] = getFileList(oldFolderPath);
+            for i = 1:listSize
+                moveFile(oldFolderPath,newFolderPath,list(i).name,list(i).name);
+            end
+            rmdir(oldFolderPath)
+        end
+    end
+end
+
+% Prevents overwrite when moving the file
+function moveFile(oldDir,newDir,oldFileName,newFileName)
+     if( exist(strcat(newDir,'\',newFileName),'file') )
+        newFileName = generateRandomString(20);
+        moveFile(oldDir,newDir,oldFileName,newFileName);
+     else
+        movefile( strcat(oldDir,'\',oldFileName),strcat(newDir,'\',newFileName) );
+     end
+end
+
+%Generate Random String of chosen max length
+function string = generateRandomString(maxLength)
+    symbols = ['a':'z' 'A':'Z' '0':'9'];
+    stLength = randi(maxLength);
+    nums = randi(numel(symbols),[1 stLength]);
+    string = symbols (nums);
+end
+
+% Check if the file is of DICOM format.
+function tf = isDICOM(filename)
+
+    % Open the file -- You can do this in the native endian type.
+    fid = fopen(filename, 'r');
+
+    fseek(fid, 128, 'bof');
+
+    if (isequal(fread(fid, 4, 'char=>char')', 'DICM'))
+
+       % It has the form of a compliant DICOM file.
+       tf = true;
+
+    else
+
+%        % It may be a DICOM file without the standard header.
+%        fseek(fid, 0, 'bof');
+% 
+%        tag = fread(fid, 2, 'uint32')';
+% 
+%        if ((isequal(tag, [8 0]) || isequal(tag, [134217728 0])) || ...
+%            (isequal(tag, [8 4]) || isequal(tag, [134217728 67108864])))
+% 
+%          % The first eight bytes look like a typical first tag.
+%          tf = true;
+% 
+%        else
+
+         % It could be a DICOM file, but it's hard to say.
+         tf = false;
+
+%        end
+
+    end
+
+    fclose(fid);
 end
