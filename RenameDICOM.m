@@ -3,8 +3,13 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.6
-% date: 09/11/2015
+% version: 2.7
+% date: 11/07/2016
+%
+% Changes at version 2.7
+% - added function sanitizeString(); it is used on strings used for file
+% names and folder names to remove illegal characters from them, that would
+% cause error in file renaming or folder creation
 %
 % Changes at version 2.6
 % - if renameChildFolders() is DICOM info for renaming folders then
@@ -70,25 +75,28 @@ function RenameDICOM(Dir)
     % ReferringPhysicianName - Project Name
    
     % Rule strings can be ; seperated e.g.:
-    %renameChildFolders(Dir,'PatientName;StudyDate',true); 
-    renameChildFolders(Dir,'ReferringPhysicianName',true);
+%     renameChildFolders(Dir,'StudyDate;ReferringPhysicianName',true); % QA setting
+    renameChildFolders(Dir,'ReferringPhysicianName',true); % regular
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    for i = 1 : listSize(1) %parfor
+    parfor i = 1 : listSize(1) %parfor
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
-        renameFiles(currentDir,'SeriesDescription;PatientName;ReferringPhysicianName','IMA',true); %rename all the files in the directory
+        renameFiles(currentDir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL setting
         % Below are listed file naming templates
         % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
         % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
         % Example Template: 'SeriesDescription;PatientName;PatientID;RequestedProcedureDescription','DCM'
         
         % Each subfolder function call creates another subfolder level.
-        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','PatientName',true);
-        counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',true);
-        counter = addSubFolder(currentDir,counter,'StudyComments','','',true);
+%         counter = addSubFolder(currentDir,counter,'PatientName','','',true);
+        counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',false); % Logos setting
+        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','PatientName',true); % QA setting / KUL setting / LOGOS setting
+
+%         counter = addSubFolder(currentDir,counter,'StudyComments','','',true);
+        
         % There can be more subfolders added
     end
     
@@ -378,6 +386,7 @@ function dataString = ruleString2dataString(info,ruleString,isCaps)
     end
     
     dataString = applyCaps(dataString, isCaps);
+    dataString = sanitizeString(dataString);
 end
 
 function dataString = applyCaps(dataString, isCaps)
@@ -429,7 +438,7 @@ end
 % renames the folders based on the properties of the first DICOM file
 % inside that folder
 function renameChildFolders(dirName,ruleString,isCaps)
-    disp('Renaming child folders');
+    disp('2. Renaming child folders');
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
@@ -540,6 +549,7 @@ end
 % Before renaming checks whether the old and the new path are not the same.
 % Also verifies that existing file with newFilePath will not be overwritten
 function renameThisFile(oldFilePath, newFileDir, newFileName)
+    newFileName = sanitizeString(newFileName);
     newFilePath = strcat(newFileDir,'\',newFileName);
     if( ~strcmp(oldFilePath,newFilePath) )
         if exist(newFilePath,'file')
@@ -547,6 +557,15 @@ function renameThisFile(oldFilePath, newFileDir, newFileName)
             newFilePath = strcat(newFileDir,'\',info.SOPInstanceUID);
         end
         movefile(oldFilePath,newFilePath);
+    end
+end
+
+% Remove forbidden characters from the strings that can be used for file
+% names or folders
+function string = sanitizeString(string)
+    bannedList = ['[','^','\','~','!','@','#','$','%','^','&','(',')','<','>','{','}',']','*'];
+    for i = 1 : length(bannedList)
+        string = strrep(string, bannedList(i),''); 
     end
 end
 
