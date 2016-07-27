@@ -3,8 +3,15 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 1.1
-% date: 02/06/2015
+% version: 1.2
+% date: 30/06/2015
+%
+% Changes at version 1.2:
+% - added mode=3, for Ola
+% - mode=3 adds session folder to mode1 structure
+% - mode=3 addes check for the same sessions
+% - BUG!! mode=3 puts into one folder studies with the same name
+%
 % Changes at version 1.1:
 % - added flattening of folder hierarchy
 % - added renaming of parent fodlers
@@ -18,17 +25,17 @@ function RenameDICOM(Mode)
     if( ~isnumeric(Mode) )
        error('Mode value needs to be numeric'); 
     end
-    if( Mode > 2)
+    if( Mode > 3)
         error('This mode is not designed. It is out of range');
     end
     Dir = getScriptDir();
     
     flattenFolderHierarchy(Dir);
-    renameChildFolders(Dir);
+    renameChildFolders(Dir,Mode);
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    parfor i = 1 : listSize(1) %parfor
+    for i = 1 : listSize(1) %parfor
         if( folderList(i).isdir == 1)
             currentDir = strcat(Dir,'\',folderList(i).name,'\');
             currentDir %echo to command line
@@ -69,7 +76,6 @@ function renameFiles(currentDir,mode)
     formatString = strcat('%0',num2str(numSize),'d');
     
     seriesDescription = '';
-    isMode2DirDone = 0;
     for k = 1 : currentListSize(1)
         
         %read DICOM info
@@ -78,25 +84,39 @@ function renameFiles(currentDir,mode)
         
         % create series subfolder if it's new
         editedDir = currentDir;
-        if( mode == 2 )
-            editedDir = strcat(editedDir,...
-                strrep(info.StudyDescription,'^','_'),...
-                '_',info.StudyDate,'_',...
-                strrep(info.StudyTime,'.','_'),...
-                '\');
-            if(isMode2DirDone == 0)
-                isMode2DirDone = 1;
+        if( mode == 2 || mode == 3)
+            switch mode
+                case 2
+                    editedDir = strcat(editedDir,...
+                        strrep(info.StudyDescription,'^','_'),...
+                        '_',info.StudyDate,'_',...
+                        strrep(info.StudyTime,'.','_'),...
+                        '\');
+                case 3
+                    editedDir = strcat(editedDir,'Session1','\');                    
+            end
+            if( ~exist(editedDir,'dir') )
                 mkdir( editedDir );
             end
         end
 
         fileDir = editedDir;
-        tempSeriesDescription = strcat(info.SeriesDescription,'_',sprintf('%04d',info.SeriesNumber));
-        if( ~strcmp(seriesDescription, tempSeriesDescription) && (mode == 1 || mode == 2) )
-            seriesDescription = strcat(info.SeriesDescription,'_',sprintf('%04d',info.SeriesNumber));
+        
+        if(mode == 3)
+            tempSeriesDescription = info.SeriesDescription;
+        else
+            tempSeriesDescription = strcat(info.SeriesDescription,'_',sprintf('%04d',info.SeriesNumber));
+        end
+        
+        if( ~strcmp(seriesDescription, tempSeriesDescription) && mode ~= 0 ) %% if seriesDescription is different from tempSeriesDescription. i.e. the filedir should change
+            if (mode == 3)
+               seriesDescription = info.SeriesDescription;
+            else % (mode == 1 || mode == 2)
+                seriesDescription = strcat(info.SeriesDescription,'_',sprintf('%04d',info.SeriesNumber));
+            end
             fileDir = strcat(editedDir, upper(seriesDescription),'\' );
             mkdir( fileDir );
-        elseif(mode == 1 || mode == 2)
+        elseif(mode == 1 || mode == 2 || mode == 3)
             fileDir = strcat(editedDir, upper(seriesDescription),'\' );
         end
         
@@ -119,6 +139,13 @@ function newFileName = getNewDicomName(dicomInfo,mode,formatString,fileNumber)
             '_',sprintf('%04d',dicomInfo.InstanceNumber),... % e.g. Instance Number
             '.IMA'... % e.g. .DICOM, .DCM
         );
+    elseif(mode == 3)
+        newFileName = strcat( ...
+            dicomInfo.RequestingPhysician.FamilyName,... % e.g. Kodowanie  numery o.b., np. sb01; przy exam nale¿y wpisaæ Requestinf Physician odpowiedni numer
+            '_',dicomInfo.SeriesDescription,... % e.g. localizer
+            '_',sprintf(formatString,fileNumber),... % e.g. 00045
+            '.IMA'... % e.g. .DICOM, .DCM
+        );
     else
         % here you can adjust what the naming will be
         newFileName = strcat( ...
@@ -135,7 +162,7 @@ end
 
 % renames the folders based on the properties of the first DICOM file
 % inside that folder
-function renameChildFolders(dirName)
+function renameChildFolders(dirName,mode)
     %get the directories
     dirResult = dir(dirName);
     allDirs = dirResult([dirResult.isdir]);
@@ -155,11 +182,15 @@ function renameChildFolders(dirName)
         
         filePath = fullfile(oldFolderPath,allFiles(1).name);
         info = dicominfo(filePath);
-        newFolderName = strcat( ...
-            upper(info.PatientName.FamilyName),... % e.g. upper case SURNAME
-            '_',upper(info.PatientName.GivenName),... % e.g. upper case NAME
-            '_',info.PatientID... % e.g. National ID
-            ); 
+        if(mode == 3)
+            newFolderName = lower(info.RequestingPhysician.FamilyName); % lower case Surname
+        else
+            newFolderName = strcat( ...
+                upper(info.PatientName.FamilyName),... % e.g. upper case SURNAME
+                '_',upper(info.PatientName.GivenName),... % e.g. upper case NAME
+                '_',info.PatientID... % e.g. National ID
+                );
+        end
         newFolderPath = strcat(dirName,'\',newFolderName);
         renameThisFile(oldFolderPath,newFolderPath);    
     end
@@ -184,8 +215,10 @@ function flattenFolderHierarchy(dirName)
     end
 end
 
+%recusrive function to verify the session folder
 
-%% recursive function to change move files to parent
+
+% recursive function to change move files to parent
 % removes the subfolders
 % moves all the files into parentDir
 % E.g.:
