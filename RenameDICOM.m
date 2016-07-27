@@ -3,8 +3,12 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.5
+% version: 2.6
 % date: 09/11/2015
+%
+% Changes at version 2.6
+% - if renameChildFolders() is DICOM info for renaming folders then
+% original name will be preserved
 %
 % Changes at version 2.5:
 % - fixed major error that script was overwriting DICOM files in
@@ -71,7 +75,7 @@ function RenameDICOM(Dir)
     
     % enter the subdirectories
     [folderList, listSize] = getFolderList(Dir);
-    parfor i = 1 : listSize(1) %parfor
+    for i = 1 : listSize(1) %parfor
         counter = 0;
         currentDir = strcat(Dir,'\',folderList(i).name,'\');    
         
@@ -104,7 +108,7 @@ end
 %   differenceRuleString (they will be distinguished by this rule late on)
 % isCaps - indicates wether to capitalise the names or not (true or false)
 function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps)
-    disp(strcat(counter+4,'. Adding subfolders according to the rule: ',ruleString));
+    disp(strcat(depth+4,'. Adding subfolders according to the rule: ',ruleString));
     [dirList,dirListSize] = getCurrentDirList(dir,depth);
 
     if( dirListSize == 0 )
@@ -173,7 +177,7 @@ function renameFiles(currentDir,namingRule,fileType,isCaps)
     %format number string
     formatString = strcat('%0',num2str(numSize),'d');
     
-    parfor k = 1 : currentListSize(1)
+    for k = 1 : currentListSize(1)
         
         %read DICOM info
         currentFilePath = fullfile(currentDir,currentFileList(k).name);
@@ -450,8 +454,10 @@ function renameChildFolders(dirName,ruleString,isCaps)
             info = dicominfo(filePath);
 
             newFolderName = ruleString2dataString(info,ruleString,isCaps);
-            newFolderPath = strcat(dirName,'\',newFolderName);
-            renameThisFolder(oldFolderPath,newFolderPath);    
+            if(~isempty( newFolderName ))
+                newFolderPath = strcat(dirName,'\',newFolderName);
+                renameThisFolder(oldFolderPath,newFolderPath);    
+            end
         else
             rmdir(oldFolderPath);
         end
