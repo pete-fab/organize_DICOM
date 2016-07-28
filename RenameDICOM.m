@@ -3,108 +3,40 @@
 % author: Piotr Faba
 % description: Rename DICOM files based on their properties, the files ought
 % to be in a subdirectory relative to the position of this script
-% version: 2.8
-% date: 16/07/2016
+% version: 2.9
+% date: 28/07/2016
 %
-% Changes at version 2.8
-% - fixed issue of files over writing when processing multiple subjects;
-% files are being renamed to unique SOPInstanceUID and renamed to requested
-% name after creating subfolders
-% - ordering of files is fixed according to instance numbering in DICOM
-%
-% Changes at version 2.7
-% - added function sanitizeString(); it is used on strings used for file
-% names and folder names to remove illegal characters from them, that would
-% cause error in file renaming or folder creation
-%
-% Changes at version 2.6
-% - if renameChildFolders() is DICOM info for renaming folders then
-% original name will be preserved
-%
-% Changes at version 2.5:
-% - fixed major error that script was overwriting DICOM files in
-% flattenFolderHierarchy()
-%
-% Changes at version 2.4:
-% - a CoOccuranceMatrix was added to account for combination of
-% differenceRules and commonRules, it allows to distinguish situations in
-% which scans were restarted%
-%
-% Changes at version 2.3:
-% - changed the way script works. It operates by the script given as
-% argument
-% - it allows to import full PACS folders with all the mess that they come
-% with (the script recognises DICOM files) and deletes all the others!
-% - the script deals with missing DICOM tags, by substituting them with
-% cumpolsory information (PatientName). The script notifies of this event
-% by writing message to the console.
-% - multiple studies can be converted with this script fairly safely (no
-% data should be overwritten or missing), though no guarantees
-% 
-% Changes at version 2.2:
-% - fixed error of removing visible directory when directory was missing 
-% '..' or '.' hidden directory
-%
-% Changes at version 2.1:
-% - fixed minor spelling issues regarding "ReferringPhysicianName"
-%
-% Changes at version 2.0:
-% - the script comletely rebuilt for full flexibility
-% - the number of subfolders is custom
-% - all the naming rules can be specified in the main function
-% - the mode system was abandoned as not useful
-% 
-% Changes at version 1.2:
-% - added mode=3, for Ola
-% - mode=3 adds session folder to mode1 structure
-% - mode=3 addes check for the same sessions
-% - BUG!! mode=3 puts into one folder studies with the same name
-%
-% Changes at version 1.1:
-% - added flattening of folder hierarchy
-% - added renaming of parent fodlers
-% - added mode (mode= 0 - flat structure, mode = 1 - subfolder structure,
-% mode = 2 - scanner like)
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function RenameDICOM(Dir)
+% Example use: RenameDicom('C:\Root\Directory\With\DICOM\files')
+% Folder structure can be formed by adding addSubFolder functions()
+function RenameDICOM(rootDir)
 
-    if ~exist(Dir,'dir')
-        error( strcat('Given directory does not exist: ',Dir,' . Give me something real to work on.') );
+    if ~exist(rootDir,'dir')
+        error( strcat('Given directory does not exist: ',rootDir,' . Give me something real to work on.') );
     end
-    
-    flattenFolderHierarchy(Dir);
+    counter = 0;
+    rootDir = sanitizeDir(rootDir);
+    flattenFolderHierarchy(rootDir);
     
     % Commonly used rules:
     % RequestingPhysician - sbXX
     % StudyComments - sX
-    % ReferringPhysicianName - Project Name
-   
-    % Rule strings can be ; seperated e.g.:
-%     renameChildFolders(Dir,'StudyDate;ReferringPhysicianName',true); % QA setting
-    renameChildFolders(Dir,'ReferringPhysicianName',true); % regular
-    
-    % enter the subdirectories
-    [folderList, listSize] = getFolderList(Dir);
-    for i = 1 : listSize(1)
-        counter = 0;
-        currentDir = strcat(Dir,filesep,folderList(i).name,filesep);        
-        % Below are listed file naming templates
-        % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
-        % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
-        % Example Template: 'SeriesDescription;PatientName;PatientID;RequestedProcedureDescription','DCM'
-        
-        % Each subfolder function call creates another subfolder level.
-%         counter = addSubFolder(currentDir,counter,'PatientName','','',true);
-        counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',false); % Logos setting
-        counter = addSubFolder(currentDir,counter,'SeriesDescription','SeriesNumber','PatientName',true); % QA setting / KUL setting / LOGOS setting
+    % ReferringPhysicianName - Project Name      
 
-%         counter = addSubFolder(currentDir,counter,'StudyComments','','',true);
         
-        % There can be more subfolders added
-    end
-    disp(strcat(num2str(i+4),'. Renaming files'));
-    renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL setting
+    % Each subfolder function call creates another subfolder level.
+%     counter = addSubFolder(rootDir,counter,'ReferringPhysicianName','','',true); % project name folder
+%     counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',false); % Logos setting
+    counter = addSubFolder(rootDir,counter,'StudyDate','','',true); % QA setting / KUL setting / LOGOS setting
+    counter = addSubFolder(rootDir,counter,'SeriesDescription','SeriesNumber','PatientName',true); % QA setting / KUL setting / LOGOS setting
+
+    
+    disp(strcat(num2str(i+3),'. Renaming files'));
+%     renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL/LOGOS setting
+    renameFiles(rootDir,'StudyDescription;RequestingPhysician','IMA',true); %rename all the files in the directory, QA setting
+    % Below are listed file naming templates
+    % Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
+    % Domagalik Template: 'RequestingPhysician;SeriesDescription','IMA'
+    % Example Template: 'SeriesDescription;PatientName;PatientID;RequestedProcedureDescription','DCM'
     
 end
 
@@ -122,7 +54,7 @@ end
 %   differenceRuleString (they will be distinguished by this rule late on)
 % isCaps - indicates wether to capitalise the names or not (true or false)
 function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps)
-    disp(strcat( num2str(depth+3) ,'. Adding subfolders according to the rule: ',ruleString));
+    disp(strcat( num2str(depth+2) ,'. Adding subfolders according to the rule: ',ruleString));
     [dirList,dirListSize] = getCurrentDirList(dir,depth);
 
     if( dirListSize == 0 )
@@ -250,6 +182,7 @@ function [coOccuranceMatrix, newDir] = createSubFolder(dir,info,ruleString,diffe
         end
         
         newDir = strcat(dir,filesep,folderName,filesep);
+        newDir = sanitizeDir(newDir);
         coOccuranceMatrix = addToCoOccuranceMatrix(coOccuranceMatrix,diffStr,commonStr,newDir);
         if( exist(newDir,'dir') )
             if( isempty(differenceRuleString) )
@@ -446,44 +379,6 @@ function string = parseFieldValue(fieldValueString)
     string = fieldValueString;
 end
 
-% renames the folders based on the properties of the first DICOM file
-% inside that folder
-function renameChildFolders(dirName,ruleString,isCaps)
-    disp('2. Renaming child folders');
-    %get the directories
-    dirResult = dir(dirName);
-    allDirs = dirResult([dirResult.isdir]);
-    allSubDirs = selectVisibleDirectories( allDirs );
-    
-    %rename them based on their contents
-    for i = 1:length(allSubDirs)
-        thisDir = allSubDirs(i);
-        oldFolderPath = fullfile(dirName,thisDir.name);
-        
-        % find the file inside the child folder and get its dicom
-        % properties
-        [allFiles, fileListLength] = getFileList(oldFolderPath);
-        if( fileListLength == 0 ) % if empty leave the name as is
-            continue;
-        end
-        
-        % the folder could happen to be empty if contained only non-DICOM
-        % files or was originally empty. In such case skip moving it.
-        if ~isempty(allFiles)
-            filePath = fullfile(oldFolderPath,allFiles(1).name);
-            info = dicominfo(filePath);
-
-            newFolderName = ruleString2dataString(info,ruleString,isCaps);
-            if(~isempty( newFolderName ))
-                newFolderPath = strcat(dirName,filesep,newFolderName);
-                renameThisFolder(oldFolderPath,newFolderPath);    
-            end
-        else
-            rmdir(oldFolderPath);
-        end
-    end
-end
-
 % Convert any folder hierarchy to:
 % root
 %  - subfolder1
@@ -491,18 +386,19 @@ end
 %  - subfolder3
 function flattenFolderHierarchy(dirName)
     disp('1. Flattening the original directory');
+    recursiveMoveFilesToParent(dirName,dirName);
 
-    %get the directories
-    dirResult = dir(dirName);
-    allDirs = dirResult([dirResult.isdir]);
-    allSubDirs = selectVisibleDirectories( allDirs );
-    
-    %rename them based on their contents
-    for i = 1:length(allSubDirs)
-        thisDir = allSubDirs(i);
-        oldName = fullfile(dirName,thisDir.name);
-        recursiveMoveFilesToParent(oldName,oldName);
-    end
+%     %get the directories
+%     dirResult = dir(dirName);
+%     allDirs = dirResult([dirResult.isdir]);
+%     allSubDirs = selectVisibleDirectories( allDirs );
+%     
+%     %rename them based on their contents
+%     for i = 1:length(allSubDirs)
+%         thisDir = allSubDirs(i);
+%         oldName = fullfile(dirName,thisDir.name);
+%         recursiveMoveFilesToParent(oldName,oldName);
+%     end
 end
 
 % Remove dot subdirectories '.' and '..'
@@ -588,6 +484,13 @@ function path = sanitizePath(path)
     path = cell2mat(path);
     path = strsplit(path,'\');
     path = strjoin(path,filesep);
+end
+
+function path = sanitizeDir(path)
+    path = sanitizePath(path);
+    path = strcat(path,filesep);
+    double = strcat(filesep,filesep);
+    path = strrep(path,double,filesep);
 end
 
 % Before renaming checks whether the old and the new path are not the same.
