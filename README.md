@@ -15,6 +15,7 @@ Changes at version 2.9
  - unified behaviour - no need renameChildFolders(); now all data is
  initially moved to the rootFolder and then the structure is built by
  adding addSubFolder() functions
+ - commenting is redone
 
 Changes at version 2.8
  - fixed issue of files over writing when processing multiple subjects;
