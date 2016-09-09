@@ -38,7 +38,7 @@ function RenameDICOM(rootDir)
     
     %% Rename files
     %
-    disp(strcat(num2str(counter+3),'. Renaming files'));
+    disp(strcat(num2str(counter+2),'. Renaming files'));
 %     renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL/LOGOS setting
     renameFiles(rootDir,'StudyDescription;RequestingPhysician','IMA',true); %rename all the files in the directory, QA setting
     % Below are listed file naming templates
