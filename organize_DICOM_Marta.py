@@ -1,5 +1,7 @@
+# coding=utf-8
 import os
 import numpy as np
+import shutil
 import scipy.linalg
 
 #% Example use: RenameDicom('C:\Root\Directory\With\DICOM\files')
@@ -75,6 +77,7 @@ def RenameDICOM(rootDir):
  #   depth = size(newDirSplit) - size(dirSplit);
 #    end
 
+#not working
 def addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString, isCaps):
     print str(str(depth + 2) + '. Adding subfolders according to the rule: ' + ruleString)
     [dirList, dirListSize] = getCurrentDirList(dir, depth)
@@ -101,6 +104,7 @@ def addSubFolder(dir, depth, ruleString, differenceRuleString, commonRuleString,
     #   fullPath = mfilename('fullpath');
     #   [Dir, ~, ~] = fileparts(fullPath);
 #end
+#working
 def getScriptDir():
     return os.path.dirname(os.path.realpath(__file__))
 
@@ -112,7 +116,7 @@ def getScriptDir():
 #    listSize = size(list);
 # end
 
-
+# working
 def getFileList(dir):
     list = os.listdir(dir)
     listSize = len(list)
@@ -126,11 +130,13 @@ def getFileList(dir):
 #    listSize = size(list);
 # end
 
+# not working
 def getFolderList(dir):
-    list = os.walk(dir)
-        x[0] for x in os.walk(dir)
-    ListSize = len(list)
-    return [list, listSize]
+    s=1
+    # list = os.walk(dir)
+    #     x[0] for x in os.walk(dir):
+    # ListSize = len(list)
+    # return [list, listSize]
 
 #% renames files in the given directory according to a given rule
 #% @variables
@@ -165,6 +171,7 @@ def getFolderList(dir):
 #renameFiles(childDir, namingRule, fileType, isCaps)
 #end
 
+#not working
 def RenameFiles(currentDir, namingRule, fileType, isCaps):
     [currentFileList, currentListSize] = getFileList(currentDir)
     numSize = size(str(currentListSize(1)))
@@ -173,13 +180,13 @@ def RenameFiles(currentDir, namingRule, fileType, isCaps):
         currentFilePath = os.path.join(currentDir, currentFileList(k).__name__)
         info = dicominfo(currentFilePath)
         newFileName = getNewDicomName(info, namingRule, fileType, isCaps, formatString, info.InstanceNumber)
-        #nie wiem na co zamienić info. w Pythonie
+        #nie wiem na co zamienic info. w Pythonie
         newFilePath = str(currentDir + newFileName)
         renameThisFile(currentFilePath,currentDir,newFileName)
     [dirList, dirListSize] = getFolderList(currentDir)
     for k in range(0,dirListSize):
         childDir = str(currentDir + '/' + dirList(k).__name__ + '/')
-        renameFiles(childDir, namingRule, fileType, isCaps)
+        RenameFiles(childDir, namingRule, fileType, isCaps)
 
 
 #%returns new name for a DICOM file according to given rules
@@ -308,8 +315,8 @@ def addToCoOccurenceMatrix(CM, differenceRuleValue, commonRuleValue, pathName):
 def isExistInCoOccuranceMatrix(CM, commonRuleValue, pathName):
     TF = False
     for i in range(1, np.shape(CM)[1]):
-        if str(os.path.abspath(CM[i]) == str(pathName) and str(CM[i].commonRuleValue) == str(commonRuleValue):
-            # nie potrafię zamienić CM[i].commonRuleValue)
+        if str(os.path.abspath(CM[i])) == str(pathName) and str(CM[i].commonRuleValue) == str(commonRuleValue):
+            # nie potrafię zamienic CM[i].commonRuleValue)
             TF = True
     return TF
 
@@ -335,8 +342,8 @@ def isExistInCoOccuranceMatrix(CM, commonRuleValue, pathName):
 def isImageAllowedIn(CM,differenceRuleValue,commonRuleValue,pathName):
     TF = False
     for i in range(1, np.shape(CM)[1]):
-    if str(CM[i].differenceRuleValue) == str(differenceRuleValue) and str(CM[i].folderName) == str(pathName) and str(CM[i].commonRuleValue) == str(commonRuleValue):
-        TF = True
+        if str(CM[i].differenceRuleValue) == str(differenceRuleValue) and str(CM[i].folderName) == str(pathName) and str(CM[i].commonRuleValue) == str(commonRuleValue):
+            TF = True
     return TF
 
 #% function called whenever differenceRuleString causes conflicts. Then
@@ -357,9 +364,10 @@ def isImageAllowedIn(CM,differenceRuleValue,commonRuleValue,pathName):
 #        newFolderName = strjoin(splitCell,'_');
 #    end
 
+#not working
 def adjustFolderName(folderName):
     splitCell = str.split(folderName, '_')
-    num = float(splitCell[-1])
+    num = float(splitCell[-1]) #error. Cannot convert to float before making sure this string is a number
     if not num or not np.isfinite(num) or (num == -999):
         newFolderName = str(folderName + '_1')
     else:
@@ -443,6 +451,7 @@ def ruleString2dataString(info, ruleString, isCaps):
 #end
 #end
 
+#working
 def applyCaps(dataString, isCaps):
     if isCaps:
         dataString = dataString.upper()
@@ -465,6 +474,7 @@ def applyCaps(dataString, isCaps):
 #        result = '';
 #end
 
+#not working
 def getField(structure, fieldName):
     if isField(structure, fieldName):
         fieldVal = getField(structure, fieldName)
@@ -498,6 +508,7 @@ def getField(structure, fieldName):
 #    string = fieldValueString;
 #end
 
+#not working
 def parseFieldValue(fieldValueString):
     for x in fieldValueString:
         if type(x) is not str:
@@ -505,7 +516,7 @@ def parseFieldValue(fieldValueString):
                 fieldValueString = str(fieldValueString)
         else:
             os.error(str('fieldValueString in parseFieldValue() is not a' + 'string nor a number. Adjust script to account for this.' + 'Notify piotr.faba@uj.edu.pl about this error.'))
-    fieldValueString = fieldValueString.replace(fieldValueString, '^', '_')
+    fieldValueString = fieldValueString.replace(fieldValueString, '^', '_') ##!!Złe użycie
     fieldValueString = fieldValueString.replace(fieldValueString, '.', '_')
     fieldValueString = fieldValueString.replace(fieldValueString, ' ', '_')
     fieldValueString = fieldValueString.replace(fieldValueString, '-', '_')
@@ -571,6 +582,7 @@ def getCurrentDirList(dir,depth):
 #%     end
 #end
 
+#not working
 def flattenFolderHierarchy(dirName):
     print '1. Flattening the original directory'
     recursiveMoveFilesToParent(dirName, dirName)
@@ -598,7 +610,7 @@ def flattenFolderHierarchy(dirName):
 
 def selectVisibleDirectories(dirResultStruct):
     for i in range(len(dirResultStruct), 0, -1):
-        if (str(os.path.abspath(dirResultStruct[i]) == str( '. .') or str(os.path.abspath(dirResultStruct[i]) == str(('.'))))):
+        i*f (str(os.path.abspath(dirResultStruct[i]) == str( '..') or str(os.path.abspath(dirResultStruct[i]) == str(('.'))))):
             dirResultStruct[i] = []
     if (np.shape(dirResultStruct)[1] == 0):
         dirResultStruct = np.array([])
@@ -615,7 +627,7 @@ def selectVisibleDirectories(dirResultStruct):
 
 #function recursiveMoveFilesToParent(dirName, parentDir)
 
-%# move all the files
+# move all the files
 #   [allFiles, fileListLength] = getFileList(dirName);
 #   for i = 1: fileListLength
 #       thisFile = allFiles(i);
@@ -644,6 +656,7 @@ def selectVisibleDirectories(dirResultStruct):
 #   end
 #end
 
+#not working
 def recursiveMoveFilesToParent(dirName, parentDir):
     [allFiles, fileListLength] = getFileList(dirName)
     for i in range(0,fileListLength):
@@ -654,14 +667,14 @@ def recursiveMoveFilesToParent(dirName, parentDir):
             renameThisFile(oldFilePath, parentDir, str(info.SeriesInstanceUID + '_' + num2str(info.InstanceNumber))) #nie wiem jak zamienić info.
         else:
             del oldFilePath
-    size(allFiles) = fileListLength
+    # size(allFiles) = fileListLength
     dirResult = dir(dirName)
     allDirs = dirResult[os.path.isdir(dirResult)]
     allSubDirs = selectVisibleDirectories(allDirs)
-    for i in range(1,len(allSubDirs):
+    for i in range(1,len(allSubDirs)):
         thisDir = allSubDirs[i]
         dirPath = os.path.join(dirName, os.path.basename(thisDir))
-        recursiveMoveFilesToParent(dirPath, parentDir
+        recursiveMoveFilesToParent(dirPath, parentDir)
         os.rmdir(dirPath)
     return recursiveMoveFilesToParent
 
@@ -682,6 +695,7 @@ def recursiveMoveFilesToParent(dirName, parentDir):
 #    end
 #end
 
+#not working
 def renameThisFile(oldFilePath, newFileDir, newFileName):
     newFileName = sanitizeString(newFileName)
     newFilePath = str(newFileDir + '/' + newFileName)
@@ -691,6 +705,9 @@ def renameThisFile(oldFilePath, newFileDir, newFileName):
         _, filename = os.path.split(newFilePath)
         ext = filename.split('.')[2]
         newFilePath = str(newFileDir + '/' + info.SOPInstanceUID + ext) #nie wiem jak zamienić info.
+        # Żeby zaobserwować czym jest info zobacz jak jest tworzone. Jest tworzone przez wywołanie dicominfo().
+        # Jak je wywołasz w Matlabie info = dicominfo('ścieżka/do/dicoma'); i otworzysz info to zobaczysz, że zawiera dane
+        # info.SOPINstanceUID zwraca wartość przypisaną do SOPInstanceUID wewnątrz tabeli info
         newFilePath = sanitizePath(newFilePath)
     if not str(oldFilePath) == str(newFilePath):
         shutil.move(oldFilePath, newFilePath)
@@ -718,20 +735,26 @@ def renameThisFile(oldFilePath, newFileDir, newFileName):
 #path = strrep(path, double, '/');
 #end
 
-def sanitizeString(string)
-    bannedList = ['[', '^', '\','',''#','$','%','^','&','(',')','<','>','{','}',']','*','@','~','!']
-    # to: '\' opiera się przecinkom
+#not working
+def sanitizeString(string):
+    bannedList = ['[', '^', '\\','#','$','%','^','&','(',')','<','>','{','}',']','*','@','~','!']
+    # znak \ to tak zwany escape character używany zawsze w parze z czymś innym. Dlatego gdy piszesz \'
+    #  są one traktowane jak jeden znak. Dlatego gdy chcesz uzyskać \, należy użyć \\
+
+    #ta część nie działa
     for i in range(0, len(bannedList)):
         string = string.replace(bannedList(i),'')
     return string
 
+#not working
 def sanitizePath(path):
     path = str.split(path, '/')
     path = np.array(path)
-    path = path.split('\') #znów ten sam błąd
+    path = path.split('\\') #znów ten sam błąd
     path = str(path + '/')
     return path
 
+#not working
 def sanitizeDir(path):
     path = sanitizePath(path)
     path = str(path + '/')
@@ -757,7 +780,7 @@ def sanitizeDir(path):
 #    end
 #end
 
-
+#working
 def renameThisFolder(oldFolderPath, newFolderPath):
     if not (str(oldFolderPath) == str(newFolderPath)):
         if not os.path.exists(newFolderPath):
@@ -779,6 +802,7 @@ def renameThisFolder(oldFolderPath, newFolderPath):
 #     end
 #end
 
+# works
 def moveFile(oldDir,newDir,oldFileName,newFileName):
     if os.path.exists(str(newDir + '/' + newFileName)):
         newFileName = generateRandomString(20)
@@ -794,6 +818,7 @@ def moveFile(oldDir,newDir,oldFileName,newFileName):
 #    string = symbols (nums);
 #end
 
+#does not work
 def generateRandomString(maxLength):
     symbols = concatenate((range('a','z'), range('A','Z'), range('0','9'))) #tu mam problem z tym rangem
     stLength = os.urandom(maxLength)
@@ -826,16 +851,28 @@ def generateRandomString(maxLength):
 #fclose(fid);
 #end
 
+#works
 def isDICOM(filename):
     with open(filename, 'r') as fid: #fid = open(filename, 'r')?
         fid.seek(128) # seek(fid, 128, 'bof')? potrzebuję tego 'bof'?
-        if fid.read(4) == 'DICM'
+        if fid.read(4) == 'DICM':
             tf = True
-        else
+        else:
             tf = False
         fid.close()
     return tf
 
 
+if __name__ == "__main__":
+    # renameThisFolder('/home/brain/Documents/playground/organizeDICOM/IMAGE/DCM/1053','/home/brain/Documents/playground/organizeDICOM/IMAGE/DCM/1052')
+    # print flattenFolderHierarchy('/home/brain/Documents/playground/organizeDICOM')
+    print applyCaps('sasasa',True)
+    # print parseFieldValue('ss$^sasa')
 
-
+    # print adjustFolderName('ALa')
+    print getFileList('/home/brain/Documents/playground/organizeDICOM/IMAGE/DCM/1052')
+    # print getFolderList('/home/brain/Documents/playground/organizeDICOM/IMAGE/DCM/1053')
+    # print getFolderList('/home/brain/Documents/playground')
+    print getScriptDir()
+    # print sanitizePath('/home/brain/Documents/playground')
+    # print sanitizeString('dsds\\fd#$%^f')
