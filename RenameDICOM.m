@@ -45,7 +45,7 @@ function RenameDICOM(rootDir)
     disp(strcat(num2str(counter+2),'. Renaming files'));
 %     renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL/LOGOS setting
 %     renameFiles(rootDir,'StudyDescription;RequestingPhysician','IMA',true); %rename all the files in the directory, QA setting
-    renameFiles(rootDir,'SeriesDescription;PatientName;StudyDate','IMA',true); %SYMFONIA
+    renameFiles(rootDir,'SeriesDescription;PatientName;StudyDate;SeriesNumber','IMA',true); %SYMFONIA
     % Below are listed file naming templates
     %
     % * Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
@@ -484,8 +484,14 @@ function result = getField(structure, fieldName)
             seqName = getfield( structure,'SequenceName' );
             fieldVal = getfield( structure,fieldName );
             if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
-                SerNum = getfield( structure, 'SeriesNumber');
-                fieldVal = strcat('fieldmap_',num2str(SerNum));
+                echoNumber = getfield( structure, 'EchoNumber');
+                if echoNumber == 1
+                    fieldVal = 'fieldmap_M';
+                elseif echoNumber == 2
+                    fieldVal = 'fieldmap_P';
+                else
+                    fieldVal = 'fieldmap';
+                end
             end
         end
         result = fieldVal;
