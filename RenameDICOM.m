@@ -30,17 +30,22 @@ function RenameDICOM(rootDir)
     %% Subfolder structure
     %
     % Each subfolder function call creates another subfolder level.
-    % counter = addSubFolder(rootDir,counter,'ReferringPhysicianName','','',true); % project name folder
-    % counter = addSubFolder(currentDir,counter,'RequestingPhysician','','',false); % Logos setting
-    counter = addSubFolder(rootDir,counter,'StudyDate','','',true); % QA setting / KUL setting / LOGOS setting
-    counter = addSubFolder(rootDir,counter,'SeriesDescription','SeriesNumber','PatientName',true); % QA setting / KUL setting / LOGOS setting
+%     counter = addSubFolder(rootDir,counter,'ReferringPhysicianName','','',true); % project name folder
+    counter = addSubFolder(rootDir,counter,'SeriesDescription','SeriesNumber','PatientName',false);  %SYMFONIA
+    counter = addSubFolder(rootDir,counter,'RequestingPhysician','','',false);  %SYMFONIA
+    counter = addSubFolder(rootDir,counter,'StudyComments','','',false);  %SYMFONIA
+    % counter = addSubFolder(rootDir,counter,'RequestingPhysician','','',false); % Logos setting
+%     counter = addSubFolder(rootDir,counter,'StudyDate','','',true); % QA setting / KUL setting / LOGOS setting
+    %counter = addSubFolder(rootDir,counter,'RequestingPhysician','','',true); % 
+%     counter = addSubFolder(rootDir,counter,'SeriesDescription','SeriesNumber','PatientName',true); % QA setting / KUL setting / LOGOS setting
 
     
     %% Rename files
     %
     disp(strcat(num2str(counter+2),'. Renaming files'));
 %     renameFiles(Dir,'RequestingPhysician;SeriesDescription','IMA',true); %rename all the files in the directory, KUL/LOGOS setting
-    renameFiles(rootDir,'StudyDescription;RequestingPhysician','IMA',true); %rename all the files in the directory, QA setting
+%     renameFiles(rootDir,'StudyDescription;RequestingPhysician','IMA',true); %rename all the files in the directory, QA setting
+    renameFiles(rootDir,'SeriesDescription;PatientName;StudyDate','IMA',true); %SYMFONIA
     % Below are listed file naming templates
     %
     % * Siemens Template: 'PatientName;StudyDescription;SeriesNumber;InstanceNumber','IMA'
@@ -97,9 +102,9 @@ function depth = addSubFolder(dir, depth, ruleString, differenceRuleString, comm
             currentFilePath = fullfile(currentDir,fileList(f).name);
             info = dicominfo(currentFilePath);
             [CM, newDir] = createSubFolder(currentDir,info,ruleString,differenceRuleString, commonRuleString, isCaps, CM);
-
+            
             %move file to folder
-            newFilePath = strcat(newDir,fileList(f).name);
+%             newFilePath = strcat(newDir,fileList(f).name);
             renameThisFile(currentFilePath,newDir,fileList(f).name);
             
         end
@@ -184,7 +189,7 @@ function renameFiles(currentDir,namingRule,fileType,isCaps)
         info = dicominfo(currentFilePath);
                 
         newFileName = getNewDicomName(info, namingRule, fileType, isCaps, formatString, info.InstanceNumber);
-        newFilePath = strcat(currentDir,newFileName);
+%         newFilePath = strcat(currentDir,newFileName);
         
         renameThisFile(currentFilePath,currentDir,newFileName);
     end
@@ -475,6 +480,13 @@ function result = getField(structure, fieldName)
         elseif( strcmp(fieldName,'ReferringPhysicianName') || strcmp(fieldName,'OperatorName')...
                 || strcmp(fieldName,'PerformingPhysicianName') || strcmp(fieldName,'RequestingPhysician') )
             fieldVal = getField(fieldVal,'FamilyName');
+        elseif strcmp( fieldName,'SeriesDescription' )
+            seqName = getfield( structure,'SequenceName' );
+            fieldVal = getfield( structure,fieldName );
+            if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
+                SerNum = getfield( structure, 'SeriesNumber');
+                fieldVal = strcat('fieldmap_',num2str(SerNum));
+            end
         end
         result = fieldVal;
     else
@@ -609,7 +621,7 @@ function renameThisFile(oldFilePath, newFileDir, newFileName)
         newFilePath = sanitizePath(newFilePath);
     end
     if( ~strcmp(oldFilePath,newFilePath) )
-        movefile(oldFilePath,newFilePath);
+        movefile(oldFilePath,newFilePath,'f');
     end
 end
 
@@ -619,7 +631,7 @@ function string = sanitizeString(string)
 %used for file names or folder names
 %
 % string = SANITIZESTRING(string)
-    bannedList = ['[','^','\','~','!','@','#','$','%','&','(',')','<','>','{','}',']','*'];
+    bannedList = ['[','^','\','~','!','@','#','$','%','&','(',')','<','>','{','}',']','*',' '];
     for i = 1 : length(bannedList)
         string = strrep(string, bannedList(i),'_'); 
     end
@@ -639,6 +651,9 @@ function path = sanitizePath(path)
     path = strsplit(path,'/');
     path = cell2mat(path);
     path = strsplit(path,'\');
+    for i = 1 : length(path)
+        path{i} = sanitizeString(path{i});
+    end
     path = strjoin(path,filesep);
 end
 
