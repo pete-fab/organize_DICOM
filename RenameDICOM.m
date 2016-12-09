@@ -8,7 +8,7 @@ function RenameDICOM(rootDir)
 %  RENAMEDICOM('C:\Root\Directory\With\DICOM\files\in\it')
 %
 % author: Piotr Faba
-% version: 2.9
+% version: 2.10
 % date: 28/07/2016
 %
 % Folder structure can be formed by adding and modifying addSubFolder() functions
@@ -481,16 +481,18 @@ function result = getField(structure, fieldName)
                 || strcmp(fieldName,'PerformingPhysicianName') || strcmp(fieldName,'RequestingPhysician') )
             fieldVal = getField(fieldVal,'FamilyName');
         elseif strcmp( fieldName,'SeriesDescription' )
-            seqName = getfield( structure,'SequenceName' );
             fieldVal = getfield( structure,fieldName );
-            if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
-                echoNumber = getfield( structure, 'EchoNumber');
-                if echoNumber == 1
-                    fieldVal = 'fieldmap_M';
-                elseif echoNumber == 2
-                    fieldVal = 'fieldmap_P';
-                else
-                    fieldVal = 'fieldmap';
+            if isfield(structure,'SequenceName') % Spectroscopy does not have this field
+                seqName = getfield( structure,'SequenceName' );
+                if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
+                    echoNumber = getfield( structure, 'EchoNumber');
+                    if echoNumber == 1
+                        fieldVal = 'fieldmap_M';
+                    elseif echoNumber == 2
+                        fieldVal = 'fieldmap_P';
+                    else
+                        fieldVal = 'fieldmap';
+                    end
                 end
             end
         end
