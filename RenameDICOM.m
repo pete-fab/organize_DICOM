@@ -8,7 +8,7 @@ function RenameDICOM(rootDir)
 %  RENAMEDICOM('C:\Root\Directory\With\DICOM\files\in\it')
 %
 % author: Piotr Faba
-% version: 2.11
+% version: 2.12
 % date: 28/07/2016
 %
 % Folder structure can be formed by adding and modifying addSubFolder() functions
@@ -228,7 +228,7 @@ function newFileName = getNewDicomName(dicomInfo, namingRule, fileType, isCaps, 
         seqName = getfield( dicomInfo,'SequenceName' );
         if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
             imType = getfield( dicomInfo,'ImageType' );
-            if imType == 'ORIGINAL\PRIMARY\M\ND'
+            if strcmp(imType,'ORIGINAL\PRIMARY\M\ND') || strcmp(imType,'ORIGINAL\PRIMARY\M\ND\NORM')
                 
                 newFileName = strcat( CoreStr,...
                             '_',sprintf(formatString,fileNumber),'_echo',num2str(dicomInfo.EchoNumber),... % e.g. 00045
@@ -500,12 +500,14 @@ function result = getField(structure, fieldName)
                 seqName = getfield( structure,'SequenceName' );
                 if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
                     imType = getfield( structure, 'ImageType');
-                    if imType == 'ORIGINAL\PRIMARY\M\ND'
+                    if strcmp(imType,'ORIGINAL\PRIMARY\M\ND')
                         fieldVal = 'fieldmap_M';
-                    elseif imType == 'ORIGINAL\PRIMARY\P\ND'
+                    elseif strcmp(imType,'ORIGINAL\PRIMARY\P\ND')
                         fieldVal = 'fieldmap_P';
+                    elseif strcmp(imType,'ORIGINAL\PRIMARY\M\ND\NORM')
+                        fieldVal = 'fieldmap_M_NORM';
                     else
-                        fieldVal = 'fieldmap';
+                        fieldVal = 'fieldmap_OTHER';
                     end
                 end
             end
