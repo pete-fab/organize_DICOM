@@ -8,7 +8,7 @@ function RenameDICOM(rootDir)
 %  RENAMEDICOM('C:\Root\Directory\With\DICOM\files\in\it')
 %
 % author: Piotr Faba
-% version: 2.10
+% version: 2.12
 % date: 28/07/2016
 %
 % Folder structure can be formed by adding and modifying addSubFolder() functions
@@ -224,6 +224,20 @@ function newFileName = getNewDicomName(dicomInfo, namingRule, fileType, isCaps, 
         '.',... 
         fileType... % e.g. .DICOM, .DCM
         );
+    if isfield(dicomInfo,'SequenceName') % Spectroscopy does not have this field
+        seqName = getfield( dicomInfo,'SequenceName' );
+        if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
+            imType = getfield( dicomInfo,'ImageType' );
+            if strcmp(imType,'ORIGINAL\PRIMARY\M\ND') || strcmp(imType,'ORIGINAL\PRIMARY\M\ND\NORM')
+                
+                newFileName = strcat( CoreStr,...
+                            '_',sprintf(formatString,fileNumber),'_echo',num2str(dicomInfo.EchoNumber),... % e.g. 00045
+                            '.',... 
+                            fileType... % e.g. .DICOM, .DCM
+                            );
+            end
+        end
+    end
 end
 
 
@@ -485,13 +499,15 @@ function result = getField(structure, fieldName)
             if isfield(structure,'SequenceName') % Spectroscopy does not have this field
                 seqName = getfield( structure,'SequenceName' );
                 if strcmp( seqName, '*fm2d2r' ) % if it is a fieldmap
-                    echoNumber = getfield( structure, 'EchoNumber');
-                    if echoNumber == 1
+                    imType = getfield( structure, 'ImageType');
+                    if strcmp(imType,'ORIGINAL\PRIMARY\M\ND')
                         fieldVal = 'fieldmap_M';
-                    elseif echoNumber == 2
+                    elseif strcmp(imType,'ORIGINAL\PRIMARY\P\ND')
                         fieldVal = 'fieldmap_P';
+                    elseif strcmp(imType,'ORIGINAL\PRIMARY\M\ND\NORM')
+                        fieldVal = 'fieldmap_M_NORM';
                     else
-                        fieldVal = 'fieldmap';
+                        fieldVal = 'fieldmap_OTHER';
                     end
                 end
             end
